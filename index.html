@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pig Latin Translator & Text Quiz</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-indigo-950 text-white min-h-screen flex flex-col items-center py-8 px-4">
+<h1 class="text-3xl font-bold mb-2 text-pink-400">🐷 Pig Latin Translator</h1>
+<p class="text-gray-400 mb-6 text-center max-w-md">Translate English ↔ Pig Latin, then test your skills in Quiz mode!</p>
+
+<div class="w-full max-w-xl space-y-4">
+  <!-- Tab Navigation -->
+  <div class="flex rounded-lg bg-indigo-900 p-1" role="tablist" aria-label="App modes">
+    <button id="tab-translate" role="tab" aria-selected="true" aria-controls="panel-translate"
+      class="flex-1 py-2 px-4 rounded-md font-semibold text-sm bg-pink-500 text-white transition-colors"
+      onclick="switchTab('translate')">Translator</button>
+    <button id="tab-quiz" role="tab" aria-selected="false" aria-controls="panel-quiz"
+      class="flex-1 py-2 px-4 rounded-md font-semibold text-sm text-gray-300 hover:text-white transition-colors"
+      onclick="switchTab('quiz')">Quiz Mode</button>
+  </div>
+
+  <!-- Translator Panel -->
+  <div id="panel-translate" role="tabpanel" aria-labelledby="tab-translate" class="bg-indigo-900 rounded-2xl p-6 shadow-xl">
+    <div class="mb-4">
+      <label for="english-input" class="block text-sm font-semibold text-gray-300 mb-1">English Text</label>
+      <textarea id="english-input" rows="3" placeholder="Type English here..."
+        class="w-full bg-indigo-800 border border-indigo-700 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:border-pink-400 resize-none"
+        aria-label="English text input"></textarea>
+    </div>
+    <div class="flex gap-3 mb-4">
+      <button onclick="translateToPigLatin()" class="flex-1 bg-pink-500 hover:bg-pink-400 font-bold py-2 rounded-lg transition-colors">
+        → Pig Latin
+      </button>
+      <button onclick="translateFromPigLatin()" class="flex-1 bg-purple-600 hover:bg-purple-500 font-bold py-2 rounded-lg transition-colors">
+        ← English
+      </button>
+    </div>
+    <div>
+      <label for="piglatin-output" class="block text-sm font-semibold text-gray-300 mb-1">Pig Latin Text</label>
+      <textarea id="piglatin-output" rows="3" placeholder="Pig Latin appears here..."
+        class="w-full bg-indigo-800 border border-indigo-700 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:border-pink-400 resize-none"
+        aria-label="Pig Latin text output"></textarea>
+    </div>
+    <div class="mt-3 text-xs text-gray-500">
+      Rules: Words starting with vowel → add "way". Consonant cluster → move to end + "ay".
+    </div>
+  </div>
+
+  <!-- Quiz Panel -->
+  <div id="panel-quiz" role="tabpanel" aria-labelledby="tab-quiz" class="bg-indigo-900 rounded-2xl p-6 shadow-xl hidden">
+    <div class="flex justify-between items-center mb-4">
+      <div class="text-sm text-gray-400">Score: <span id="quiz-score" class="text-white font-bold">0</span> / <span id="quiz-total">0</span></div>
+      <div id="quiz-timer" class="text-2xl font-mono font-bold text-yellow-400" aria-live="polite">15</div>
+    </div>
+
+    <div id="quiz-question" class="bg-indigo-800 rounded-xl p-4 mb-4 text-center min-h-16 flex items-center justify-center">
+      <p class="text-lg font-semibold text-pink-300" id="quiz-pig-sentence"></p>
+    </div>
+
+    <div>
+      <label for="quiz-answer" class="block text-sm font-semibold text-gray-300 mb-1">Type the English original:</label>
+      <input id="quiz-answer" type="text" placeholder="Your answer..."
+        class="w-full bg-indigo-800 border border-indigo-700 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:border-pink-400"
+        aria-label="Quiz answer input" autocomplete="off">
+    </div>
+
+    <div class="flex gap-3 mt-3">
+      <button onclick="submitQuizAnswer()" class="flex-1 bg-pink-500 hover:bg-pink-400 font-bold py-2 rounded-lg transition-colors">
+        Submit
+      </button>
+      <button onclick="skipQuestion()" class="flex-1 bg-gray-600 hover:bg-gray-500 font-bold py-2 rounded-lg transition-colors">
+        Skip
+      </button>
+      <button onclick="startQuiz()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 font-bold py-2 rounded-lg transition-colors">
+        Restart
+      </button>
+    </div>
+
+    <div id="quiz-feedback" class="mt-4 text-center text-base font-semibold min-h-6" aria-live="polite"></div>
+    <div id="quiz-reveal" class="mt-2 text-center text-sm text-gray-400 min-h-5"></div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+const VOWELS = 'aeiouAEIOU';
+
+function toPigLatin(word) {
+  const prefix = word.match(/^[^a-zA-Z]*/)[0];
+  const suffix = word.match(/[^a-zA-Z]*$/)[0];
+  const core = word.slice(prefix.length, word.length - suffix.length);
+  if (!core) return word;
+
+  const lc = core.toLowerCase();
+  if (VOWELS.includes(lc[0])) {
+    return prefix + core + 'way' + suffix;
+  }
+
+  // Find consonant cluster
+  let i = 0;
+  while (i < core.length && !VOWELS.includes(core[i])) i++;
+  if (i === core.length) return prefix + core + 'ay' + suffix;
+
+  const moved = core.slice(i);
+  const cluster = core.slice(0, i).toLowerCase();
+  const isCapitalized = core[0] === core[0].toUpperCase() && core[0] !== core[0].toLowerCase();
+  let res = moved.toLowerCase() + cluster + 'ay';
+  if (isCapitalized) res = res.charAt(0).toUpperCase() + res.slice(1);
+  return prefix + res + suffix;
+}
+
+function translateText(text) {
+  return text.split(/(\s+)/).map(part => /\s+/.test(part) ? part : toPigLatin(part)).join('');
+}
+
+function fromPigLatin(word) {
+  const prefix = word.match(/^[^a-zA-Z]*/)[0];
+  const suffix = word.match(/[^a-zA-Z]*$/)[0];
+  const core = word.slice(prefix.length, word.length - suffix.length);
+  if (!core) return word;
+
+  const lc = core.toLowerCase();
+  if (lc.endsWith('way')) {
+    return prefix + core.slice(0, -3) + suffix;
+  }
+  if (lc.endsWith('ay')) {
+    const withoutAy = core.slice(0, -2);
+    // Find the consonant cluster at the end (moved there from beginning)
+    // Reverse: find where the original cluster ends
+    const match = withoutAy.match(/^(.+?)([bcdfghjklmnpqrstvwxyz]+)$/i);
+    if (match) {
+      const isCapitalized = core[0] === core[0].toUpperCase() && core[0] !== core[0].toLowerCase();
+      let res = match[2] + match[1];
+      if (isCapitalized) res = res.charAt(0).toUpperCase() + res.slice(1).toLowerCase();
+      else res = res.toLowerCase();
+      return prefix + res + suffix;
+    }
+    return prefix + withoutAy + suffix;
+  }
+  return word;
+}
+
+function translateFromPigText(text) {
+  return text.split(/(\s+)/).map(part => /\s+/.test(part) ? part : fromPigLatin(part)).join('');
+}
+
+function translateToPigLatin() {
+  const input = document.getElementById('english-input').value;
+  document.getElementById('piglatin-output').value = translateText(input);
+}
+
+function translateFromPigLatin() {
+  const input = document.getElementById('piglatin-output').value;
+  document.getElementById('english-input').value = translateFromPigText(input);
+}
+
+// Quiz mode
+const SENTENCES = [
+  "The quick brown fox jumps over the lazy dog",
+  "Hello world this is a test",
+  "Practice makes perfect",
+  "Learning is fun every day",
+  "The cat sat on the mat",
+  "She sells seashells by the seashore",
+  "How much wood would a woodchuck chuck",
+  "I love coding and building apps",
+  "The sun shines bright in the sky",
+  "Keep calm and carry on",
+];
+
+let quizIndex = 0;
+let quizScore = 0;
+let quizTotal = 0;
+let quizTimer = null;
+let quizTimeLeft = 15;
+let currentAnswer = '';
+let quizOrder = [];
+
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function startQuiz() {
+  quizOrder = shuffleArray([...Array(SENTENCES.length).keys()]);
+  quizIndex = 0;
+  quizScore = 0;
+  quizTotal = 0;
+  document.getElementById('quiz-score').textContent = '0';
+  document.getElementById('quiz-total').textContent = '0';
+  document.getElementById('quiz-feedback').textContent = '';
+  document.getElementById('quiz-reveal').textContent = '';
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (quizIndex >= quizOrder.length) {
+    endQuiz();
+    return;
+  }
+  currentAnswer = SENTENCES[quizOrder[quizIndex]];
+  const pigSentence = translateText(currentAnswer);
+  const el = document.getElementById('quiz-pig-sentence');
+  el.textContent = pigSentence;
+  document.getElementById('quiz-answer').value = '';
+  document.getElementById('quiz-feedback').textContent = '';
+  document.getElementById('quiz-reveal').textContent = '';
+  startTimer();
+  quizIndex++;
+}
+
+function startTimer() {
+  clearInterval(quizTimer);
+  quizTimeLeft = 15;
+  document.getElementById('quiz-timer').textContent = quizTimeLeft;
+  quizTimer = setInterval(() => {
+    quizTimeLeft--;
+    document.getElementById('quiz-timer').textContent = quizTimeLeft;
+    if (quizTimeLeft <= 0) {
+      clearInterval(quizTimer);
+      timeUp();
+    }
+  }, 1000);
+}
+
+function timeUp() {
+  quizTotal++;
+  document.getElementById('quiz-total').textContent = quizTotal;
+  const fb = document.getElementById('quiz-feedback');
+  fb.className = 'mt-4 text-center text-base font-semibold min-h-6 text-red-400';
+  fb.textContent = '⏱ Time\'s up!';
+  document.getElementById('quiz-reveal').textContent = `Answer: ${currentAnswer}`;
+  setTimeout(nextQuestion, 2000);
+}
+
+function submitQuizAnswer() {
+  clearInterval(quizTimer);
+  const answer = document.getElementById('quiz-answer').value.trim();
+  quizTotal++;
+  document.getElementById('quiz-total').textContent = quizTotal;
+  const fb = document.getElementById('quiz-feedback');
+  const correct = answer.toLowerCase() === currentAnswer.toLowerCase();
+  if (correct) {
+    quizScore++;
+    document.getElementById('quiz-score').textContent = quizScore;
+    fb.className = 'mt-4 text-center text-base font-semibold min-h-6 text-green-400';
+    fb.textContent = '✅ Correct!';
+  } else {
+    fb.className = 'mt-4 text-center text-base font-semibold min-h-6 text-red-400';
+    fb.textContent = '❌ Not quite!';
+    document.getElementById('quiz-reveal').textContent = `Answer: ${currentAnswer}`;
+  }
+  setTimeout(nextQuestion, 1800);
+}
+
+function skipQuestion() {
+  clearInterval(quizTimer);
+  quizTotal++;
+  document.getElementById('quiz-total').textContent = quizTotal;
+  const fb = document.getElementById('quiz-feedback');
+  fb.className = 'mt-4 text-center text-base font-semibold min-h-6 text-yellow-400';
+  fb.textContent = 'Skipped';
+  document.getElementById('quiz-reveal').textContent = `Answer: ${currentAnswer}`;
+  setTimeout(nextQuestion, 1500);
+}
+
+function endQuiz() {
+  clearInterval(quizTimer);
+  const el = document.getElementById('quiz-pig-sentence');
+  el.textContent = `Quiz complete! Score: ${quizScore} / ${SENTENCES.length}`;
+  document.getElementById('quiz-answer').value = '';
+  document.getElementById('quiz-feedback').textContent = '';
+  document.getElementById('quiz-timer').textContent = '🏁';
+}
+
+function switchTab(tab) {
+  const panels = ['translate', 'quiz'];
+  panels.forEach(p => {
+    const btn = document.getElementById(`tab-${p}`);
+    const panel = document.getElementById(`panel-${p}`);
+    if (p === tab) {
+      btn.classList.add('bg-pink-500', 'text-white');
+      btn.classList.remove('text-gray-300');
+      btn.setAttribute('aria-selected', 'true');
+      panel.classList.remove('hidden');
+    } else {
+      btn.classList.remove('bg-pink-500', 'text-white');
+      btn.classList.add('text-gray-300');
+      btn.setAttribute('aria-selected', 'false');
+      panel.classList.add('hidden');
+    }
+  });
+  if (tab === 'quiz') startQuiz();
+  else clearInterval(quizTimer);
+}
+
+document.getElementById('quiz-answer').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitQuizAnswer();
+});
+document.getElementById('english-input').addEventListener('input', translateToPigLatin);
+</script>
+</body>
+</html>
